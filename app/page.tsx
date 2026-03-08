@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useAuth } from "@/lib/hooks/useAuth";
 import {
     Zap, Brain, Mic, FileText, Mail, Star, Check,
     ArrowRight, Play, Users, TrendingUp, Clock, Globe,
@@ -35,14 +38,16 @@ const plans = [
 ];
 
 export default function LandingPage() {
+    const { user } = useAuth();
+
     return (
         <div className="min-h-screen bg-[#0a0a0f] text-[#e2e2ef]">
             {/* ─── NAVBAR ─────────────────────────────────────────────────── */}
             <nav className="fixed top-0 left-0 right-0 z-50 border-b border-[#1e1e2e] bg-[#0a0a0f]/80 backdrop-blur-md">
                 <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6c47ff] to-purple-600 flex items-center justify-center">
-                            <Zap className="w-5 h-5 text-white" />
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#6c47ff] to-purple-600 flex items-center justify-center overflow-hidden">
+                            <img src="/logo.png" alt="HireFlow AI" className="w-full h-full object-cover" />
                         </div>
                         <span className="text-lg font-bold text-white">HireFlow AI</span>
                     </div>
@@ -54,8 +59,14 @@ export default function LandingPage() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        <Link href="/sign-in" className="text-sm text-[#8b8b9e] hover:text-white transition-colors px-3 py-2">Sign In</Link>
-                        <Link href="/sign-up" className="btn-primary text-sm py-2 px-4">Get Started Free</Link>
+                        {user ? (
+                            <Link href="/dashboard" className="btn-primary text-sm py-2 px-4">Dashboard</Link>
+                        ) : (
+                            <>
+                                <Link href="/sign-in" className="text-sm text-[#8b8b9e] hover:text-white transition-colors px-3 py-2">Sign In</Link>
+                                <Link href="/sign-up" className="btn-primary text-sm py-2 px-4">Get Started Free</Link>
+                            </>
+                        )}
                     </div>
                 </div>
             </nav>

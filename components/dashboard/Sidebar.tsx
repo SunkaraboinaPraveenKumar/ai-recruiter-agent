@@ -41,8 +41,8 @@ export function Sidebar() {
         >
             {/* Logo */}
             <div className={cn("h-16 flex items-center border-b border-[#1e1e2e] px-4", collapsed ? "justify-center" : "gap-3")}>
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6c47ff] to-purple-600 flex items-center justify-center shrink-0">
-                    <Zap className="w-5 h-5 text-white" />
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#6c47ff] to-purple-600 flex items-center justify-center shrink-0 overflow-hidden">
+                    <img src="/logo.png" alt="HireFlow AI Logo" className="w-full h-full object-cover" />
                 </div>
                 {!collapsed && <span className="font-bold text-white text-sm">HireFlow AI</span>}
             </div>
@@ -80,9 +80,9 @@ export function Sidebar() {
                             <span className="text-xs font-semibold text-white">Free Plan</span>
                         </div>
                         <p className="text-xs text-[#8b8b9e] mb-3">Upgrade to Pro for unlimited interviews</p>
-                        <button className="w-full py-1.5 rounded-md bg-gradient-to-r from-[#6c47ff] to-purple-600 text-xs font-semibold text-white hover:opacity-90 transition-opacity">
+                        <Link href="/#pricing" className="w-full py-1.5 rounded-md bg-gradient-to-r from-[#6c47ff] to-purple-600 text-xs font-semibold text-white hover:opacity-90 transition-opacity text-center inline-block flex items-center justify-center">
                             Upgrade Plan
-                        </button>
+                        </Link>
                     </div>
                 </div>
             )}

@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { Zap, Mic, MicOff, Video, VideoOff, PhoneOff, CheckCircle, Clock } from "lucide-react";
+import Link from "next/link";
+import { toast } from "sonner";
+import { Mic, MicOff, PhoneOff, CheckCircle, Clock } from "lucide-react";
 
 interface InterviewDetails {
     jobTitle: string;
@@ -38,15 +40,15 @@ export default function InterviewPage() {
     const [aiSpeaking, setAiSpeaking] = useState(false);
     const [interimText, setInterimText] = useState("");
     const [muted, setMuted] = useState(false);
-    const [cameraOff, setCameraOff] = useState(false);
     const [startTime] = useState(Date.now());
     const [elapsed, setElapsed] = useState(0);
     const [questionsAnswered, setQuestionsAnswered] = useState(0);
     const [totalQuestions, setTotalQuestions] = useState(5);
     const [voiceId, setVoiceId] = useState("en-US-Neural2-F");
     const [completing, setCompleting] = useState(false);
+    const [showEndDialog, setShowEndDialog] = useState(false);
+    const [starting, setStarting] = useState(false);
 
-    const videoRef = useRef<HTMLVideoElement>(null);
     const transcriptRef = useRef<HTMLDivElement>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const recognitionRef = useRef<any>(null);
@@ -87,47 +89,42 @@ export default function InterviewPage() {
     const formatTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
     // Play AI audio via Murf proxy
-    const speakText = useCallback(async (text: string) => {
-        setAiSpeaking(true);
-        try {
-            const res = await fetch("/api/murf/speak", {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, voiceId }),
-            });
-            if (!res.ok || !res.body) {
-                // Fallback: use browser TTS
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.onend = () => setAiSpeaking(false);
-                speechSynthesis.speak(utterance);
-                return;
-            }
+    const speakText = useCallback((text: string) => {
+        return new Promise<void>(async (resolve) => {
+            setAiSpeaking(true);
+            try {
+                const res = await fetch("/api/murf/speak", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text, voiceId }),
+                });
+                if (!res.ok || !res.body) throw new Error("Murf failed");
 
-            if (!audioContextRef.current) {
-                audioContextRef.current = new AudioContext();
+                if (!audioContextRef.current) audioContextRef.current = new window.AudioContext();
+                const ctx = audioContextRef.current;
+                const chunks: Uint8Array[] = [];
+                const reader = res.body.getReader();
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    chunks.push(value);
+                }
+                const audioData = new Uint8Array(chunks.reduce((acc, c) => acc + c.length, 0));
+                let offset = 0;
+                for (const c of chunks) { audioData.set(c, offset); offset += c.length; }
+                const decoded = await ctx.decodeAudioData(audioData.buffer);
+                const source = ctx.createBufferSource();
+                source.buffer = decoded;
+                source.connect(ctx.destination);
+                source.onended = () => { setAiSpeaking(false); resolve(); };
+                source.start();
+            } catch {
+                // Fallback
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.onend = () => { setAiSpeaking(false); resolve(); };
+                utterance.onerror = () => { setAiSpeaking(false); resolve(); }; // Prevent hanging if TTS fails
+                speechSynthesis.speak(utterance);
             }
-            const ctx = audioContextRef.current;
-            const chunks: Uint8Array[] = [];
-            const reader = res.body.getReader();
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                chunks.push(value);
-            }
-            const audioData = new Uint8Array(chunks.reduce((acc, c) => acc + c.length, 0));
-            let offset = 0;
-            for (const c of chunks) { audioData.set(c, offset); offset += c.length; }
-            const decoded = await ctx.decodeAudioData(audioData.buffer);
-            const source = ctx.createBufferSource();
-            source.buffer = decoded;
-            source.connect(ctx.destination);
-            source.onended = () => setAiSpeaking(false);
-            source.start();
-        } catch {
-            // Fallback
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.onend = () => setAiSpeaking(false);
-            speechSynthesis.speak(utterance);
-        }
+        });
     }, [voiceId]);
 
     // Submit answer and get next question
@@ -165,6 +162,7 @@ export default function InterviewPage() {
             }
         } catch (err) {
             console.error("Answer submit error:", err);
+            toast.error("Failed to submit answer. Please try again.");
         }
     }, [sessionId, token, currentQuestion, questionsAnswered, speakText]);
 
@@ -173,6 +171,7 @@ export default function InterviewPage() {
 
     // Start speech recognition
     const startListening = useCallback(() => {
+        if (muted || completing || showEndDialog) return;
         // Access SpeechRecognition with window casts for cross-browser support
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const w = window as any;
@@ -217,45 +216,66 @@ export default function InterviewPage() {
 
         recognition.start();
         setListening(true);
-    }, [details]);
+    }, [muted, completing, showEndDialog, details]);
+
+    useEffect(() => {
+        if (muted && recognitionRef.current) {
+            recognitionRef.current.abort();
+            setListening(false);
+        } else if (!muted && step === "interview" && !aiSpeaking && !completing && !showEndDialog) {
+            startListening();
+        }
+    }, [muted, step, aiSpeaking, completing, showEndDialog, startListening]);
 
     // Start interview
     const startInterview = async () => {
-        if (!candidateName.trim()) return;
+        if (!candidateName.trim() || starting) return;
+        setStarting(true);
         try {
-            // Get camera
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); }
-        } catch {
-            // Camera denied, proceed without video
+            try {
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch {
+                toast.error("Microphone access is recommended for the best experience.");
+            }
+
+            const res = await fetch(`/api/interview/${token}/start`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ candidateName }),
+            });
+            const data = await res.json();
+            if (!data.sessionId) { toast.error("Failed to start interview"); setStarting(false); return; }
+
+            setSessionId(data.sessionId);
+            setCurrentQuestion(data.firstQuestion || "");
+            const aiEntry: TranscriptLine = { role: "ai", text: data.firstQuestion, timestamp: new Date().toISOString() };
+            setTranscript([aiEntry]);
+            setStep("interview");
+
+            await speakText(data.firstQuestion);
+            startListening();
+        } catch (error) {
+            console.error("Failed to start:", error);
+            toast.error("Failed to start interview.");
+        } finally {
+            setStarting(false);
         }
-
-        const res = await fetch(`/api/interview/${token}/start`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ candidateName }),
-        });
-        const data = await res.json();
-        if (!data.sessionId) { alert("Failed to start interview"); return; }
-
-        setSessionId(data.sessionId);
-        setCurrentQuestion(data.firstQuestion || "");
-        const aiEntry: TranscriptLine = { role: "ai", text: data.firstQuestion, timestamp: new Date().toISOString() };
-        setTranscript([aiEntry]);
-        setStep("interview");
-
-        await speakText(data.firstQuestion);
-        startListening();
     };
 
-    const endInterview = async () => {
-        if (!confirm("End the interview early?")) return;
+    const confirmEndInterview = () => setShowEndDialog(true);
+
+    const performEndInterview = async () => {
         if (recognitionRef.current) recognitionRef.current.abort();
         setCompleting(true);
-        await fetch(`/api/interview/${token}/complete`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sessionId }),
-        });
-        setStep("complete");
+        try {
+            await fetch(`/api/interview/${token}/complete`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ sessionId }),
+            });
+        } finally {
+            setStep("complete");
+            setShowEndDialog(false);
+            setCompleting(false);
+        }
     };
 
     // ─── Error state ──────────────────────────────────────────────────────────────
@@ -317,12 +337,12 @@ export default function InterviewPage() {
             <div className="min-h-screen bg-[#0a0a0f]">
                 {/* Header */}
                 <header className="h-14 flex items-center px-6 border-b border-[#1e1e2e]">
-                    <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#6c47ff] to-purple-600 flex items-center justify-center">
-                            <Zap className="w-4 h-4 text-white" />
+                    <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#6c47ff] to-purple-600 flex items-center justify-center overflow-hidden">
+                            <img src="/logo.png" alt="HireFlow AI" className="w-full h-full object-cover" />
                         </div>
                         <span className="font-bold text-white text-sm">HireFlow AI</span>
-                    </div>
+                    </Link>
                 </header>
 
                 <div className="max-w-5xl mx-auto p-6 grid md:grid-cols-2 gap-6 pt-10">
@@ -352,7 +372,12 @@ export default function InterviewPage() {
                         <div className="card">
                             <h3 className="font-semibold text-white mb-3">What to Expect</h3>
                             <ul className="space-y-2 text-sm text-[#8b8b9e]">
-                                {["A friendly AI interviewer will ask you questions", "Answer verbally — the AI will listen and transcribe", `After ${details.silenceTimeout}s of silence, the next question begins`, "You'll be asked to consent to camera & microphone", "The whole process takes ~${details.estimatedDuration}"].map((tip, i) => (
+                                {[
+                                    "A friendly AI interviewer will ask you questions",
+                                    "Answer verbally — the AI will listen and transcribe",
+                                    `After ${details.silenceTimeout}s of silence, the next question begins`,
+                                    `The whole process takes ~${details.estimatedDuration}`
+                                ].map((tip, i) => (
                                     <li key={i} className="flex items-start gap-2"><span className="text-[#6c47ff] mt-0.5 shrink-0">→</span>{tip}</li>
                                 ))}
                             </ul>
@@ -374,7 +399,6 @@ export default function InterviewPage() {
                             <ul className="space-y-2 mb-6">
                                 {[
                                     ["Microphone", "Required for answering questions"],
-                                    ["Camera", "Recommended (optional)"],
                                     ["Quiet environment", "Reduce background noise"],
                                 ].map(([item, desc]) => (
                                     <li key={item} className="flex items-center gap-3 text-sm">
@@ -388,11 +412,20 @@ export default function InterviewPage() {
                             </ul>
                             <button
                                 onClick={startInterview}
-                                disabled={!candidateName.trim()}
+                                disabled={!candidateName.trim() || starting}
                                 className="btn-primary w-full text-base py-3 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
-                                <Mic className="w-5 h-5" />
-                                Start Interview
+                                {starting ? (
+                                    <>
+                                        <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                                        Preparing Interview...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Mic className="w-5 h-5" />
+                                        Start Interview
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>
@@ -406,98 +439,138 @@ export default function InterviewPage() {
         <div className="min-h-screen bg-[#0a0a0f] flex flex-col">
             {/* Top bar */}
             <div className="h-12 flex items-center justify-between px-4 border-b border-[#1e1e2e] bg-[#111118]">
-                <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-[#6c47ff]" />
+                <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                    <img src="/logo.png" alt="Logo" className="w-8 h-8 rounded-lg object-cover" />
                     <span className="text-sm font-medium text-white">HireFlow AI Interview</span>
-                </div>
+                </Link>
                 <div className="flex items-center gap-4 text-sm text-[#8b8b9e]">
                     <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{formatTime(elapsed)}</span>
                     <span className="text-[#6c47ff]">{questionsAnswered}/{totalQuestions} Q</span>
                 </div>
             </div>
 
-            <div className="flex-1 grid md:grid-cols-5 gap-4 p-4 max-h-[calc(100vh-48px)]">
-                {/* Left — video + AI avatar */}
-                <div className="md:col-span-3 flex flex-col gap-4">
-                    <div className="relative flex-1 rounded-2xl overflow-hidden bg-[#111118] border border-[#1e1e2e]">
-                        {/* Candidate webcam */}
-                        <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" muted playsInline />
-                        {cameraOff && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-[#111118]">
-                                <VideoOff className="w-12 h-12 text-[#8b8b9e]" />
-                            </div>
-                        )}
-
-                        {/* AI Avatar overlay */}
-                        <div className="absolute top-4 left-4 flex flex-col items-center gap-2">
-                            <div className={`w-16 h-16 rounded-full bg-gradient-to-br from-[#6c47ff] to-purple-600 flex items-center justify-center text-2xl ${aiSpeaking ? "ai-speaking" : ""}`}>
-                                🤖
-                            </div>
-                            <span className="text-xs bg-black/50 px-2 py-0.5 rounded-full text-white">{details.aiName}</span>
-                            {aiSpeaking && <span className="text-xs text-[#6c47ff] animate-pulse">Speaking...</span>}
+            <div className="flex-1 flex flex-col gap-4 p-4 overflow-hidden max-h-[calc(100vh-48px)]">
+                {/* Top Half: 50/50 Split */}
+                <div className="grid md:grid-cols-2 gap-4 h-[45vh] min-h-[300px] shrink-0">
+                    {/* Left: AI Bot */}
+                    <div className="relative rounded-2xl overflow-hidden bg-[#111118] border border-[#1e1e2e] flex flex-col items-center justify-center shadow-lg">
+                        <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/5 backdrop-blur-sm z-10">
+                            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                            <span className="text-xs text-white font-medium">{details.aiName} (AI)</span>
                         </div>
 
-                        {/* Current question */}
-                        {currentQuestion && (
-                            <div className="absolute bottom-16 left-4 right-4 bg-black/70 backdrop-blur-sm rounded-xl p-3">
-                                <p className="text-xs text-[#8b8b9e] mb-1">{details.aiName} asks:</p>
-                                <p className="text-sm text-white">{currentQuestion}</p>
-                            </div>
-                        )}
+                        <div className={`w-32 h-32 rounded-full bg-gradient-to-br from-[#6c47ff] to-purple-600 flex items-center justify-center text-5xl shadow-xl shadow-[#6c47ff]/20 transition-all duration-300 ${aiSpeaking ? "ai-speaking scale-105" : "animate-pulse"}`}>
+                            🤖
+                        </div>
+                        {aiSpeaking && <p className="text-xs text-[#6c47ff] mt-4 font-medium animate-pulse">Speaking...</p>}
 
-                        {/* Listening indicator */}
-                        {listening && (
-                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-red-500/20 border border-red-500/30 rounded-full px-3 py-1">
-                                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                                <span className="text-xs text-red-400">Listening...</span>
+                        {currentQuestion && (
+                            <div className="absolute bottom-4 left-4 right-4 bg-black/70 backdrop-blur-md rounded-xl p-3 border border-white/10 z-10 transition-all">
+                                <p className="text-xs text-[#8b8b9e] mb-1 font-medium select-none">Current Question:</p>
+                                <p className="text-sm text-white leading-relaxed line-clamp-2">{currentQuestion}</p>
                             </div>
                         )}
                     </div>
 
-                    {/* Controls */}
-                    <div className="flex items-center justify-center gap-4">
-                        <button onClick={() => setMuted(!muted)}
-                            className={`p-3 rounded-full border transition-colors ${muted ? "bg-red-500/20 border-red-500/30 text-red-400" : "border-[#1e1e2e] text-[#8b8b9e] hover:text-white"}`}>
-                            {muted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                        </button>
-                        <button onClick={() => setCameraOff(!cameraOff)}
-                            className={`p-3 rounded-full border transition-colors ${cameraOff ? "bg-red-500/20 border-red-500/30 text-red-400" : "border-[#1e1e2e] text-[#8b8b9e] hover:text-white"}`}>
-                            {cameraOff ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
-                        </button>
-                        <button onClick={endInterview} disabled={completing}
-                            className="p-3 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-60">
-                            <PhoneOff className="w-5 h-5" />
-                        </button>
+                    {/* Right: Me (Candidate) */}
+                    <div className="relative rounded-2xl overflow-hidden bg-[#111118] border border-[#1e1e2e] flex flex-col items-center justify-center shadow-lg">
+                        <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/40 px-3 py-1.5 rounded-full border border-white/5 backdrop-blur-sm z-10">
+                            <span className="w-2 h-2 rounded-full bg-blue-400" />
+                            <span className="text-xs text-white font-medium">You</span>
+                        </div>
+
+                        {listening && !muted && (
+                            <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-500/20 border border-red-500/30 rounded-full px-3 py-1 animate-pulse z-10">
+                                <div className="w-2 h-2 rounded-full bg-red-500" />
+                                <span className="text-[10px] uppercase font-bold text-red-400 tracking-wider">Listening</span>
+                            </div>
+                        )}
+                        {muted && (
+                            <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/40 border border-white/5 rounded-full px-3 py-1 z-10">
+                                <MicOff className="w-3 h-3 text-[#8b8b9e]" />
+                                <span className="text-[10px] uppercase font-bold text-[#8b8b9e] tracking-wider">Muted</span>
+                            </div>
+                        )}
+
+                        <div className={`w-32 h-32 rounded-full bg-gradient-to-br from-blue-600 to-cyan-600 flex items-center justify-center text-5xl shadow-xl shadow-blue-500/20 text-white font-bold transition-all duration-300 ${listening && !muted ? "scale-105 ring-4 ring-blue-500/30" : ""}`}>
+                            {candidateName.charAt(0).toUpperCase()}
+                        </div>
+
+                        {/* Controls */}
+                        <div className="absolute bottom-6 flex items-center gap-4 z-10">
+                            <button onClick={() => setMuted(!muted)}
+                                className={`p-4 rounded-full border transition-all hover:scale-105 shadow-lg ${muted ? "bg-red-500/20 border-red-500/30 text-red-500 hover:bg-red-500/30" : "bg-black/50 backdrop-blur-md border border-white/10 text-white hover:bg-black/70"}`}>
+                                {muted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                            </button>
+                            <button onClick={confirmEndInterview} disabled={step !== "interview"}
+                                className="p-4 rounded-full bg-red-600 text-white hover:bg-red-500 transition-all hover:scale-105 shadow-lg shadow-red-500/20 disabled:opacity-60 disabled:hover:scale-100">
+                                <PhoneOff className="w-6 h-6" />
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                {/* Right — Transcript */}
-                <div className="md:col-span-2 flex flex-col">
-                    <div className="card flex-1 flex flex-col overflow-hidden">
-                        <h3 className="font-semibold text-white mb-3 text-sm shrink-0">Live Transcript</h3>
-                        <div ref={transcriptRef} className="flex-1 overflow-y-auto space-y-3 pr-1">
-                            {transcript.map((t, i) => (
-                                <div key={i} className={`flex ${t.role === "candidate" ? "justify-end" : "justify-start"}`}>
-                                    <div className={`max-w-[85%] rounded-xl px-3 py-2 ${t.role === "candidate" ? "bg-[#6c47ff]/20 ml-4" : "bg-[#1e1e2e] mr-4"}`}>
-                                        <p className="text-xs text-[#8b8b9e] mb-0.5 font-medium">
-                                            {t.role === "ai" ? details.aiName : "You"}
-                                        </p>
-                                        <p className="text-xs text-[#e2e2ef] leading-relaxed">{t.text}</p>
+                {/* Bottom Half: Transcript */}
+                <div className="flex-1 card flex flex-col overflow-hidden border border-[#1e1e2e]/60 bg-[#16161f]/50">
+                    <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[#1e1e2e]/50 shrink-0">
+                        <div className="w-2.5 h-2.5 rounded-full bg-[#6c47ff] shadow-[0_0_10px_rgba(108,71,255,0.6)]" />
+                        <h3 className="font-semibold text-white text-sm">Live Transcript</h3>
+                    </div>
+
+                    <div ref={transcriptRef} className="flex-1 overflow-y-auto space-y-4 pr-3 scrollbar-thin scrollbar-thumb-[#1e1e2e] scrollbar-track-transparent">
+                        {transcript.map((t, i) => (
+                            <div key={i} className={`flex ${t.role === "candidate" ? "justify-end" : "justify-start"}`}>
+                                <div className={`max-w-[75%] rounded-2xl px-5 py-3 shadow-sm ${t.role === "candidate" ? "bg-[#6c47ff]/20 ml-4 border border-[#6c47ff]/20 rounded-tr-sm" : "bg-[#1e1e2e]/80 mr-4 border border-white/5 rounded-tl-sm"}`}>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className={`text-[11px] font-bold uppercase tracking-wider ${t.role === "ai" ? "text-[#6c47ff]" : "text-blue-400"}`}>
+                                            {t.role === "ai" ? `🤖 ${details.aiName}` : "👤 You"}
+                                        </span>
+                                        <span className="text-[#8b8b9e] text-[10px] font-medium opacity-60">
+                                            {new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
                                     </div>
+                                    <p className="text-sm text-[#e2e2ef] leading-relaxed">{t.text}</p>
                                 </div>
-                            ))}
-                            {interimText && (
-                                <div className="flex justify-end">
-                                    <div className="max-w-[85%] rounded-xl px-3 py-2 bg-[#6c47ff]/10 border border-[#6c47ff]/20 ml-4">
-                                        <p className="text-xs text-[#8b8b9e] mb-0.5">You (typing...)</p>
-                                        <p className="text-xs text-[#8b8b9e] italic">{interimText}</p>
+                            </div>
+                        ))}
+                        {interimText && (
+                            <div className="flex justify-end">
+                                <div className="max-w-[75%] rounded-2xl px-5 py-3 bg-[#6c47ff]/5 border border-[#6c47ff]/10 ml-4 rounded-tr-sm">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-[11px] font-bold uppercase tracking-wider text-blue-400">👤 You</span>
+                                        <span className="text-[#6c47ff] text-[10px] uppercase font-bold animate-pulse tracking-wider">typing...</span>
                                     </div>
+                                    <p className="text-sm text-[#8b8b9e] italic leading-relaxed">{interimText}</p>
                                 </div>
-                            )}
-                        </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
+
+            {/* End Call Dialog */}
+            {showEndDialog && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="bg-[#111118] border border-[#1e1e2e] rounded-2xl shadow-2xl p-6 max-w-sm w-full animate-in fade-in duration-200">
+                        {completing ? (
+                            <div className="text-center py-6">
+                                <div className="w-12 h-12 rounded-full border-4 border-[#6c47ff] border-t-transparent animate-spin mx-auto mb-4" />
+                                <h3 className="text-lg font-bold text-white mb-2">Finalizing Interview</h3>
+                                <p className="text-[#8b8b9e] text-sm">Generating your AI report...</p>
+                            </div>
+                        ) : (
+                            <>
+                                <h3 className="text-xl font-bold text-white mb-2">End Interview?</h3>
+                                <p className="text-[#8b8b9e] text-sm mb-6">Are you sure you want to end this interview? If you have unsubmitted answers, they will be lost.</p>
+                                <div className="flex gap-3">
+                                    <button onClick={() => setShowEndDialog(false)} className="flex-1 btn-primary bg-[#1e1e2e] !text-white hover:bg-[#2e2e44] shadow-none border-0" style={{ backgroundImage: "none" }}>Cancel</button>
+                                    <button onClick={performEndInterview} className="flex-1 btn-primary !bg-red-500 hover:!bg-red-600 !text-white shadow-none border-0" style={{ backgroundImage: "none" }}>End Call</button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

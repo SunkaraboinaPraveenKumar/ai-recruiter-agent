@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Calendar, Search, Filter, ChevronRight } from "lucide-react";
+import { Calendar, Search, Filter, ChevronRight, ChevronDown } from "lucide-react";
 import { timeAgo } from "@/lib/utils";
 import { RadialBarChart, RadialBar, ResponsiveContainer, PolarAngleAxis } from "recharts";
 
@@ -85,6 +85,8 @@ export default function SchedulesPage() {
     const [session, setSession] = useState<Session | null>(null);
     const [sessionLoading, setSessionLoading] = useState(false);
     const [showTranscript, setShowTranscript] = useState(false);
+    const [showTypeMenu, setShowTypeMenu] = useState(false);
+    const [showStatusMenu, setShowStatusMenu] = useState(false);
 
     useEffect(() => {
         fetch("/api/invites").then(r => r.json()).then(d => {
@@ -152,19 +154,55 @@ export default function SchedulesPage() {
                         <input value={search} onChange={e => setSearch(e.target.value)} className="input-field pl-9" placeholder="Search..." />
                     </div>
 
-                    <div className="flex gap-2">
-                        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="input-field text-xs py-1.5 flex-1">
-                            <option value="all">All Types</option>
-                            <option value="screening">Screening</option>
-                            <option value="technical">Technical</option>
-                            <option value="hr_final">HR Final</option>
-                        </select>
-                        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input-field text-xs py-1.5 flex-1">
-                            <option value="all">All Status</option>
-                            <option value="pending">Pending</option>
-                            <option value="completed">Completed</option>
-                            <option value="expired">Expired</option>
-                        </select>
+                    <div className="flex gap-3">
+                        <div className="relative flex-1">
+                            <button
+                                onClick={() => setShowTypeMenu(!showTypeMenu)}
+                                className="w-full flex items-center justify-between input-field hover:border-[#6c47ff]/50 transition-colors"
+                            >
+                                <span className={typeFilter !== "all" ? "text-white" : "text-[#8b8b9e]"}>
+                                    {typeFilter === "all" ? "All Types" : typeFilter === "screening" ? "Screening" : typeFilter === "technical" ? "Technical" : "HR Final"}
+                                </span>
+                                <ChevronDown className={`w-4 h-4 text-[#8b8b9e] transition-transform ${showTypeMenu ? "rotate-180" : ""}`} />
+                            </button>
+                            {showTypeMenu && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setShowTypeMenu(false)} />
+                                    <div className="absolute top-[calc(100%+0.5rem)] left-0 w-full bg-[#16161f] border border-[#1e1e2e] rounded-xl shadow-2xl z-20 p-1 overflow-hidden">
+                                        {[{ val: "all", label: "All Types" }, { val: "screening", label: "Screening" }, { val: "technical", label: "Technical" }, { val: "hr_final", label: "HR Final" }].map(t => (
+                                            <button key={t.val} onClick={() => { setTypeFilter(t.val); setShowTypeMenu(false); }}
+                                                className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${typeFilter === t.val ? "bg-[#6c47ff]/10 text-[#6c47ff] font-medium" : "text-[#8b8b9e] hover:bg-[#1e1e2e] hover:text-white"}`}>
+                                                {t.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        <div className="relative flex-1">
+                            <button
+                                onClick={() => setShowStatusMenu(!showStatusMenu)}
+                                className="w-full flex items-center justify-between input-field hover:border-[#6c47ff]/50 transition-colors"
+                            >
+                                <span className={statusFilter !== "all" ? "text-white" : "text-[#8b8b9e]"}>
+                                    {statusFilter === "all" ? "All Status" : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}
+                                </span>
+                                <ChevronDown className={`w-4 h-4 text-[#8b8b9e] transition-transform ${showStatusMenu ? "rotate-180" : ""}`} />
+                            </button>
+                            {showStatusMenu && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setShowStatusMenu(false)} />
+                                    <div className="absolute top-[calc(100%+0.5rem)] left-0 w-full bg-[#16161f] border border-[#1e1e2e] rounded-xl shadow-2xl z-20 p-1 overflow-hidden">
+                                        {[{ val: "all", label: "All Status" }, { val: "pending", label: "Pending" }, { val: "completed", label: "Completed" }, { val: "expired", label: "Expired" }].map(t => (
+                                            <button key={t.val} onClick={() => { setStatusFilter(t.val); setShowStatusMenu(false); }}
+                                                className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${statusFilter === t.val ? "bg-[#6c47ff]/10 text-[#6c47ff] font-medium" : "text-[#8b8b9e] hover:bg-[#1e1e2e] hover:text-white"}`}>
+                                                {t.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
 
                     <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1">

@@ -52,8 +52,8 @@ export default function SignInPage() {
                 {/* Logo */}
                 <div className="text-center mb-8">
                     <div className="inline-flex items-center gap-2 mb-4">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#6c47ff] to-purple-600 flex items-center justify-center">
-                            <Zap className="w-6 h-6 text-white" />
+                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#6c47ff] to-purple-600 flex items-center justify-center overflow-hidden">
+                            <img src="/logo.png" alt="HireFlow AI" className="w-full h-full object-cover" />
                         </div>
                         <span className="text-xl font-bold text-white">HireFlow AI</span>
                     </div>

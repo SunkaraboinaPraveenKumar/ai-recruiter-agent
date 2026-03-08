@@ -4,6 +4,7 @@ import { jobs, candidates, job_candidate_matches } from "@/lib/db/schema";
 import { requireAuth } from "@/lib/auth/middleware";
 import { eq, and } from "drizzle-orm";
 import { matchCandidatesToJob } from "@/lib/ai/gemini";
+import { interview_invites } from "@/lib/db/schema";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const { user, response } = requireAuth(req);
@@ -24,8 +25,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             return NextResponse.json({ error: "No candidates found. Add candidates first." }, { status: 400 });
         }
 
+        // Get existing invites for this job
+        const existingInvites = await db.select().from(interview_invites)
+            .where(eq(interview_invites.job_id, id));
+
+        const invitedCandidateIds = new Set(existingInvites.map(i => i.candidate_id));
+
+        // Filter out candidates who already have an invite for this job
+        const availableCandidates = allCandidates.filter(c => !invitedCandidateIds.has(c.id));
+
+        if (availableCandidates.length === 0) {
+            return NextResponse.json({ matches: [] }); // Or an error, but empty array is cleaner
+        }
+
         // Run AI matching
-        const matches = await matchCandidatesToJob(job, allCandidates);
+        const matches = await matchCandidatesToJob(job, availableCandidates);
 
         // Save matches to DB (upsert)
         for (const match of matches) {

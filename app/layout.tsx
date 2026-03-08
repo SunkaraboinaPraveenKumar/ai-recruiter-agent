@@ -6,6 +6,9 @@ import { AuthProvider } from "@/lib/hooks/useAuth";
 export const metadata: Metadata = {
     title: "HireFlow AI — AI-Powered Recruiting",
     description: "Automate your entire hiring pipeline with AI. Post jobs, match candidates, conduct voice interviews, and make hiring decisions — all automated.",
+    icons: {
+        icon: "/favicon.ico",
+    },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

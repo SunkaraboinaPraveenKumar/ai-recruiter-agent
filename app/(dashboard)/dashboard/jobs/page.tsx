@@ -93,13 +93,13 @@ function JobCard({ job, onDelete, onStatusChange, onFindMatches, onEdit }: {
                     <button
                         onClick={() => setShowStatusMenu(!showStatusMenu)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-colors ${job.status === "active" ? "border-green-500/30 text-green-400 bg-green-500/10 hover:bg-green-500/20" :
-                                job.status === "expired" ? "border-red-500/30 text-red-400 bg-red-500/10 hover:bg-red-500/20" :
-                                    "border-[#1e1e2e] text-[#8b8b9e] bg-[#1e1e2e]/50 hover:bg-[#1e1e2e]"
+                            job.status === "expired" ? "border-red-500/30 text-red-400 bg-red-500/10 hover:bg-red-500/20" :
+                                "border-[#1e1e2e] text-[#8b8b9e] bg-[#1e1e2e]/50 hover:bg-[#1e1e2e]"
                             } text-xs font-medium`}
                     >
                         <span className={`w-1.5 h-1.5 rounded-full ${job.status === "active" ? "bg-green-400" :
-                                job.status === "expired" ? "bg-red-400" :
-                                    "bg-[#8b8b9e]"
+                            job.status === "expired" ? "bg-red-400" :
+                                "bg-[#8b8b9e]"
                             }`} />
                         {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
                         <ChevronDown className={`w-3 h-3 ml-1 transition-transform ${showStatusMenu ? 'rotate-180' : ''}`} />
@@ -107,18 +107,18 @@ function JobCard({ job, onDelete, onStatusChange, onFindMatches, onEdit }: {
                     {showStatusMenu && (
                         <>
                             <div className="fixed inset-0 z-10" onClick={() => setShowStatusMenu(false)} />
-                            <div className="absolute top-[calc(100%+0.5rem)] left-0 bg-[#16161f] border border-[#1e1e2e] rounded-xl shadow-2xl z-20 p-1 w-36 overflow-hidden">
+                            <div className="absolute bottom-[calc(100%+0.5rem)] left-0 bg-[#16161f] border border-[#1e1e2e] rounded-xl shadow-2xl z-20 p-1 w-36 overflow-hidden">
                                 {["draft", "active", "expired"].map(s => (
                                     <button key={s} onClick={() => { onStatusChange(job.id, s); setShowStatusMenu(false); }}
                                         className={`w-full flex items-center gap-2 px-3 py-2 text-xs rounded-lg transition-colors ${job.status === s
-                                                ? s === 'active' ? "bg-green-500/10 text-green-400 font-semibold" :
-                                                    s === 'expired' ? "bg-red-500/10 text-red-400 font-semibold" :
-                                                        "bg-[#1e1e2e] text-white font-semibold"
-                                                : "text-[#8b8b9e] hover:bg-[#1e1e2e] hover:text-white"
+                                            ? s === 'active' ? "bg-green-500/10 text-green-400 font-semibold" :
+                                                s === 'expired' ? "bg-red-500/10 text-red-400 font-semibold" :
+                                                    "bg-[#1e1e2e] text-white font-semibold"
+                                            : "text-[#8b8b9e] hover:bg-[#1e1e2e] hover:text-white"
                                             }`}>
                                         <span className={`w-1.5 h-1.5 rounded-full ${s === "active" ? "bg-green-400" :
-                                                s === "expired" ? "bg-red-400" :
-                                                    "bg-[#8b8b9e]"
+                                            s === "expired" ? "bg-red-400" :
+                                                "bg-[#8b8b9e]"
                                             }`} />
                                         {s.charAt(0).toUpperCase() + s.slice(1)}
                                     </button>
@@ -148,14 +148,19 @@ function JobCard({ job, onDelete, onStatusChange, onFindMatches, onEdit }: {
     );
 }
 
-function AddJobModal({ onClose, onSave }: { onClose: () => void; onSave: (job: Job) => void }) {
-    const [mode, setMode] = useState<"ai" | "manual">("ai");
+function JobFormModal({ job, onClose, onSave }: { job?: Job; onClose: () => void; onSave: (job: Job) => void }) {
+    const [mode, setMode] = useState<"ai" | "manual">(job ? "manual" : "ai");
     const [aiTitle, setAiTitle] = useState("");
     const [generating, setGenerating] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [showTypeMenu, setShowTypeMenu] = useState(false);
+    const [showStatusMenu, setShowStatusMenu] = useState(false);
     const [form, setForm] = useState({
-        title: "", type: "Full-time", location: "", salary_min: "", salary_max: "",
-        description: "", responsibilities: "", requirements: "", status: "draft"
+        title: job?.title || "", type: job?.type || "Full-time", location: job?.location || "",
+        salary_min: job?.salary_min ? String(job.salary_min) : "",
+        salary_max: job?.salary_max ? String(job.salary_max) : "",
+        description: job?.description || "", responsibilities: job?.responsibilities || "",
+        requirements: job?.requirements || "", status: job?.status || "draft"
     });
 
     const generateWithAI = async () => {
@@ -188,13 +193,13 @@ function AddJobModal({ onClose, onSave }: { onClose: () => void; onSave: (job: J
         }
         setSaving(true);
         try {
-            const res = await fetch("/api/jobs", {
-                method: "POST", headers: { "Content-Type": "application/json" },
+            const res = await fetch(job ? `/api/jobs/${job.id}` : "/api/jobs", {
+                method: job ? "PATCH" : "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ ...form, salary_min: form.salary_min ? Number(form.salary_min) : null, salary_max: form.salary_max ? Number(form.salary_max) : null }),
             });
             if (!res.ok) throw new Error();
             const data = await res.json();
-            toast.success("Job saved!");
+            toast.success(job ? "Job updated!" : "Job saved!");
             onSave(data.job);
         } catch {
             toast.error("Failed to save job");
@@ -208,7 +213,7 @@ function AddJobModal({ onClose, onSave }: { onClose: () => void; onSave: (job: J
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
             <div className="relative w-full max-w-2xl bg-[#111118] border border-[#1e1e2e] rounded-2xl shadow-2xl max-h-[90vh] flex flex-col">
                 <div className="flex items-center justify-between p-6 border-b border-[#1e1e2e]">
-                    <h2 className="text-lg font-bold text-white">Add New Job</h2>
+                    <h2 className="text-lg font-bold text-white">{job ? "Edit Job" : "Add New Job"}</h2>
                     <button onClick={onClose} className="p-2 rounded-lg hover:bg-[#1e1e2e] transition-colors text-[#8b8b9e]"><X className="w-5 h-5" /></button>
                 </div>
 
@@ -241,11 +246,28 @@ function AddJobModal({ onClose, onSave }: { onClose: () => void; onSave: (job: J
                             <label className="block text-sm font-medium text-[#e2e2ef] mb-1.5">Job Title *</label>
                             <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} className="input-field" placeholder="Senior Frontend Engineer" />
                         </div>
-                        <div>
+                        <div className="relative">
                             <label className="block text-sm font-medium text-[#e2e2ef] mb-1.5">Type *</label>
-                            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="input-field">
-                                {["Full-time", "Part-time", "Contract", "Remote"].map(t => <option key={t}>{t}</option>)}
-                            </select>
+                            <button
+                                onClick={() => setShowTypeMenu(!showTypeMenu)}
+                                className="w-full flex items-center justify-between input-field hover:border-[#6c47ff]/50 transition-colors"
+                            >
+                                <span className={form.type ? "text-white" : "text-[#8b8b9e]"}>{form.type || "Select Type"}</span>
+                                <ChevronDown className={`w-4 h-4 text-[#8b8b9e] transition-transform ${showTypeMenu ? "rotate-180" : ""}`} />
+                            </button>
+                            {showTypeMenu && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setShowTypeMenu(false)} />
+                                    <div className="absolute top-[calc(100%+0.5rem)] left-0 w-full bg-[#16161f] border border-[#1e1e2e] rounded-xl shadow-2xl z-20 p-1 overflow-hidden">
+                                        {["Full-time", "Part-time", "Contract", "Remote"].map(t => (
+                                            <button key={t} onClick={() => { setForm({ ...form, type: t }); setShowTypeMenu(false); }}
+                                                className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${form.type === t ? "bg-[#6c47ff]/10 text-[#6c47ff] font-medium" : "text-[#8b8b9e] hover:bg-[#1e1e2e] hover:text-white"}`}>
+                                                {t}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-[#e2e2ef] mb-1.5">Location *</label>
@@ -271,12 +293,33 @@ function AddJobModal({ onClose, onSave }: { onClose: () => void; onSave: (job: J
                             <label className="block text-sm font-medium text-[#e2e2ef] mb-1.5">Requirements</label>
                             <textarea value={form.requirements} onChange={e => setForm({ ...form, requirements: e.target.value })} className="input-field min-h-[80px]" placeholder="Required qualifications..." />
                         </div>
-                        <div>
+                        <div className="relative">
                             <label className="block text-sm font-medium text-[#e2e2ef] mb-1.5">Status</label>
-                            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="input-field">
-                                <option value="draft">Draft</option>
-                                <option value="active">Active</option>
-                            </select>
+                            <button
+                                onClick={() => setShowStatusMenu(!showStatusMenu)}
+                                className="w-full flex items-center justify-between input-field hover:border-[#6c47ff]/50 transition-colors"
+                            >
+                                <span className="flex items-center gap-1.5">
+                                    <span className={`w-1.5 h-1.5 rounded-full ${form.status === "active" ? "bg-green-400" : "bg-[#8b8b9e]"}`} />
+                                    {form.status.charAt(0).toUpperCase() + form.status.slice(1)}
+                                </span>
+                                <ChevronDown className={`w-4 h-4 text-[#8b8b9e] transition-transform ${showStatusMenu ? "rotate-180" : ""}`} />
+                            </button>
+                            {showStatusMenu && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setShowStatusMenu(false)} />
+                                    <div className="absolute bottom-[calc(100%+0.5rem)] left-0 w-full bg-[#16161f] border border-[#1e1e2e] rounded-xl shadow-2xl z-20 p-1 overflow-hidden">
+                                        <button onClick={() => { setForm({ ...form, status: "draft" }); setShowStatusMenu(false); }}
+                                            className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${form.status === "draft" ? "bg-[#1e1e2e] text-white font-medium" : "text-[#8b8b9e] hover:bg-[#1e1e2e] hover:text-white"}`}>
+                                            <span className="w-1.5 h-1.5 rounded-full bg-[#8b8b9e]" /> Draft
+                                        </button>
+                                        <button onClick={() => { setForm({ ...form, status: "active" }); setShowStatusMenu(false); }}
+                                            className={`w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${form.status === "active" ? "bg-green-500/10 text-green-400 font-medium" : "text-[#8b8b9e] hover:bg-[#1e1e2e] hover:text-white"}`}>
+                                            <span className="w-1.5 h-1.5 rounded-full bg-green-400" /> Active
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -284,7 +327,7 @@ function AddJobModal({ onClose, onSave }: { onClose: () => void; onSave: (job: J
                 <div className="p-6 border-t border-[#1e1e2e] flex justify-end gap-3">
                     <button onClick={onClose} className="px-4 py-2 rounded-lg border border-[#1e1e2e] text-sm text-[#8b8b9e] hover:bg-[#1e1e2e] transition-colors">Cancel</button>
                     <button onClick={handleSave} disabled={saving} className="btn-primary text-sm disabled:opacity-60">
-                        {saving ? "Saving..." : "Save Job"}
+                        {saving ? "Saving..." : job ? "Update Job" : "Save Job"}
                     </button>
                 </div>
             </div>
@@ -571,7 +614,8 @@ export default function JobsPage() {
                 </div>
             )}
 
-            {showAddModal && <AddJobModal onClose={() => setShowAddModal(false)} onSave={job => { setJobs(p => [job, ...p]); setShowAddModal(false); }} />}
+            {showAddModal && <JobFormModal onClose={() => setShowAddModal(false)} onSave={job => { setJobs(p => [job, ...p]); setShowAddModal(false); }} />}
+            {editJob && <JobFormModal job={editJob} onClose={() => setEditJob(null)} onSave={job => { setJobs(p => p.map(j => j.id === job.id ? job : j)); setEditJob(null); }} />}
             {matchJob && <MatchDialog job={matchJob} onClose={() => setMatchJob(null)} />}
         </div>
     );

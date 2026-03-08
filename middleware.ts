@@ -8,10 +8,14 @@ const ACCESS_SECRET = new TextEncoder().encode(
 
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
+    const token = request.cookies.get("access_token")?.value;
+
+    if ((pathname === "/sign-in" || pathname === "/sign-up") && token) {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
 
     // Protect /dashboard/* routes
     if (pathname.startsWith("/dashboard")) {
-        const token = request.cookies.get("access_token")?.value;
 
         if (!token) {
             return NextResponse.redirect(new URL("/sign-in", request.url));
@@ -44,5 +48,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-    matcher: ["/dashboard/:path*"],
+    matcher: ["/dashboard/:path*", "/sign-in", "/sign-up"],
 };
