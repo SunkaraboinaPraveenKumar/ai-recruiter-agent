@@ -1,0 +1,373 @@
+﻿   Γû▓ Next.js 15.1.0
+
+   Creating an optimized production build ...
+node.exe :  ΓÜá Compiled 
+with warnings
+At line:1 char:1
++ & "C:\Program 
+Files\nodejs/node.exe" "C:
+\Users\sunka\AppData\Roami
+ng\ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo        
+      : NotSpecified: (   
+  ΓÜá Compiled with war   
+ nings:String) [], Rem    
+oteException
+    + FullyQualifiedError 
+   Id : NativeCommandErr  
+  or
+ 
+
+./node_modules/jose/dist/w
+ebapi/lib/deflate.js
+A Node.js API is used 
+(CompressionStream at 
+line: 10) which is not 
+supported in the Edge 
+Runtime.
+Learn more: https://nextjs
+.org/docs/api-reference/ed
+ge-runtime
+
+Import trace for 
+requested module:
+./node_modules/jose/dist/w
+ebapi/lib/deflate.js
+./node_modules/jose/dist/w
+ebapi/jwe/flattened/decryp
+t.js
+./node_modules/jose/dist/w
+ebapi/index.js
+
+./node_modules/jose/dist/w
+ebapi/lib/deflate.js
+A Node.js API is used 
+(DecompressionStream at 
+line: 26) which is not 
+supported in the Edge 
+Runtime.
+Learn more: https://nextjs
+.org/docs/api-reference/ed
+ge-runtime
+
+Import trace for 
+requested module:
+./node_modules/jose/dist/w
+ebapi/lib/deflate.js
+./node_modules/jose/dist/w
+ebapi/jwe/flattened/decryp
+t.js
+./node_modules/jose/dist/w
+ebapi/index.js
+
+Failed to compile.
+
+./app/globals.css.webpack[
+javascript/auto]!=!./node_
+modules/next/dist/build/we
+bpack/loaders/css-loader/s
+rc/index.js??ruleSet[1].ru
+les[13].oneOf[10].use[2]!.
+/node_modules/next/dist/bu
+ild/webpack/loaders/postcs
+s-loader/src/index.js??rul
+eSet[1].rules[13].oneOf[10
+].use[3]!./app/globals.css
+ReferenceError: module is 
+not defined in ES module 
+scope
+    at file:///C:/Users/su
+nka/Downloads/ai-interview
+-app/postcss.config.mjs:1:
+1
+    at ModuleJob.run (node
+:internal/modules/esm/modu
+le_job:413:25)
+    at async onImport.trac
+ePromise.__proto__ (node:i
+nternal/modules/esm/loader
+:660:26)
+    at async findConfig (C
+:\Users\sunka\Downloads\ai
+-interview-app\node_module
+s\next\dist\lib\find-confi
+g.js:90:21)
+    at async 
+getPostCssPlugins (C:\User
+s\sunka\Downloads\ai-inter
+view-app\node_modules\next
+\dist\build\webpack\config
+\blocks\css\plugins.js:89:
+18)
+    at async C:\Users\sunk
+a\Downloads\ai-interview-a
+pp\node_modules\next\dist\
+build\webpack\config\block
+s\css\index.js:124:36
+    at async C:\Users\sunk
+a\Downloads\ai-interview-a
+pp\node_modules\next\dist\
+build\webpack\loaders\post
+css-loader\src\index.js:52
+:40
+    at async 
+Span.traceAsyncFn (C:\User
+s\sunka\Downloads\ai-inter
+view-app\node_modules\next
+\dist\trace\trace.js:153:2
+0)
+
+Import trace for 
+requested module:
+./app/globals.css.webpack[
+javascript/auto]!=!./node_
+modules/next/dist/build/we
+bpack/loaders/css-loader/s
+rc/index.js??ruleSet[1].ru
+les[13].oneOf[10].use[2]!.
+/node_modules/next/dist/bu
+ild/webpack/loaders/postcs
+s-loader/src/index.js??rul
+eSet[1].rules[13].oneOf[10
+].use[3]!./app/globals.css
+./app/globals.css
+
+./app/globals.css
+ReferenceError: module is 
+not defined in ES module 
+scope
+    at file:///C:/Users/su
+nka/Downloads/ai-interview
+-app/postcss.config.mjs:1:
+1
+    at ModuleJob.run (node
+:internal/modules/esm/modu
+le_job:413:25)
+    at async onImport.trac
+ePromise.__proto__ (node:i
+nternal/modules/esm/loader
+:660:26)
+    at async findConfig (C
+:\Users\sunka\Downloads\ai
+-interview-app\node_module
+s\next\dist\lib\find-confi
+g.js:90:21)
+    at async 
+getPostCssPlugins (C:\User
+s\sunka\Downloads\ai-inter
+view-app\node_modules\next
+\dist\build\webpack\config
+\blocks\css\plugins.js:89:
+18)
+    at async C:\Users\sunk
+a\Downloads\ai-interview-a
+pp\node_modules\next\dist\
+build\webpack\config\block
+s\css\index.js:124:36
+    at async C:\Users\sunk
+a\Downloads\ai-interview-a
+pp\node_modules\next\dist\
+build\webpack\loaders\post
+css-loader\src\index.js:52
+:40
+    at async 
+Span.traceAsyncFn (C:\User
+s\sunka\Downloads\ai-inter
+view-app\node_modules\next
+\dist\trace\trace.js:153:2
+0)
+    at 
+tryRunOrWebpackError (C:\U
+sers\sunka\Downloads\ai-in
+terview-app\node_modules\n
+ext\dist\compiled\webpack\
+bundle5.js:28:314962)
+    at __webpack_require_m
+odule__ (C:\Users\sunka\Do
+wnloads\ai-interview-app\n
+ode_modules\next\dist\comp
+iled\webpack\bundle5.js:28
+:131434)
+    at __nested_webpack_re
+quire_161179__ (C:\Users\s
+unka\Downloads\ai-intervie
+w-app\node_modules\next\di
+st\compiled\webpack\bundle
+5.js:28:130872)
+    at C:\Users\sunka\Down
+loads\ai-interview-app\nod
+e_modules\next\dist\compil
+ed\webpack\bundle5.js:28:1
+31723
+    at symbolIterator (C:\
+Users\sunka\Downloads\ai-i
+nterview-app\node_modules\
+next\dist\compiled\neo-asy
+nc\async.js:1:14444)
+    at done (C:\Users\sunk
+a\Downloads\ai-interview-a
+pp\node_modules\next\dist\
+compiled\neo-async\async.j
+s:1:14824)
+    at Hook.eval [as 
+callAsync] (eval at 
+create (C:\Users\sunka\Dow
+nloads\ai-interview-app\no
+de_modules\next\dist\compi
+led\webpack\bundle5.js:13:
+9218), <anonymous>:15:1)
+    at 
+Hook.CALL_ASYNC_DELEGATE 
+[as _callAsync] (C:\Users\
+sunka\Downloads\ai-intervi
+ew-app\node_modules\next\d
+ist\compiled\webpack\bundl
+e5.js:13:6372)
+    at C:\Users\sunka\Down
+loads\ai-interview-app\nod
+e_modules\next\dist\compil
+ed\webpack\bundle5.js:28:1
+30593
+    at symbolIterator (C:\
+Users\sunka\Downloads\ai-i
+nterview-app\node_modules\
+next\dist\compiled\neo-asy
+nc\async.js:1:14402)
+-- inner error --
+ReferenceError: module is 
+not defined in ES module 
+scope
+    at file:///C:/Users/su
+nka/Downloads/ai-interview
+-app/postcss.config.mjs:1:
+1
+    at ModuleJob.run (node
+:internal/modules/esm/modu
+le_job:413:25)
+    at async onImport.trac
+ePromise.__proto__ (node:i
+nternal/modules/esm/loader
+:660:26)
+    at async findConfig (C
+:\Users\sunka\Downloads\ai
+-interview-app\node_module
+s\next\dist\lib\find-confi
+g.js:90:21)
+    at async 
+getPostCssPlugins (C:\User
+s\sunka\Downloads\ai-inter
+view-app\node_modules\next
+\dist\build\webpack\config
+\blocks\css\plugins.js:89:
+18)
+    at async C:\Users\sunk
+a\Downloads\ai-interview-a
+pp\node_modules\next\dist\
+build\webpack\config\block
+s\css\index.js:124:36
+    at async C:\Users\sunk
+a\Downloads\ai-interview-a
+pp\node_modules\next\dist\
+build\webpack\loaders\post
+css-loader\src\index.js:52
+:40
+    at async 
+Span.traceAsyncFn (C:\User
+s\sunka\Downloads\ai-inter
+view-app\node_modules\next
+\dist\trace\trace.js:153:2
+0)
+    at Object.<anonymous> 
+(C:\Users\sunka\Downloads\
+ai-interview-app\node_modu
+les\next\dist\build\webpac
+k\loaders\css-loader\src\i
+ndex.js??ruleSet[1].rules[
+13].oneOf[10].use[2]!C:\Us
+ers\sunka\Downloads\ai-int
+erview-app\node_modules\ne
+xt\dist\build\webpack\load
+ers\postcss-loader\src\ind
+ex.js??ruleSet[1].rules[13
+].oneOf[10].use[3]!C:\User
+s\sunka\Downloads\ai-inter
+view-app\app\globals.css:1
+:7)
+    at C:\Users\sunka\Down
+loads\ai-interview-app\nod
+e_modules\next\dist\compil
+ed\webpack\bundle5.js:28:9
+55548
+    at Hook.eval [as 
+call] (eval at create (C:\
+Users\sunka\Downloads\ai-i
+nterview-app\node_modules\
+next\dist\compiled\webpack
+\bundle5.js:13:8996), 
+<anonymous>:7:1)
+    at Hook.CALL_DELEGATE 
+[as _call] (C:\Users\sunka
+\Downloads\ai-interview-ap
+p\node_modules\next\dist\c
+ompiled\webpack\bundle5.js
+:13:6266)
+    at C:\Users\sunka\Down
+loads\ai-interview-app\nod
+e_modules\next\dist\compil
+ed\webpack\bundle5.js:28:1
+31467
+    at 
+tryRunOrWebpackError (C:\U
+sers\sunka\Downloads\ai-in
+terview-app\node_modules\n
+ext\dist\compiled\webpack\
+bundle5.js:28:314916)
+    at __webpack_require_m
+odule__ (C:\Users\sunka\Do
+wnloads\ai-interview-app\n
+ode_modules\next\dist\comp
+iled\webpack\bundle5.js:28
+:131434)
+    at __nested_webpack_re
+quire_161179__ (C:\Users\s
+unka\Downloads\ai-intervie
+w-app\node_modules\next\di
+st\compiled\webpack\bundle
+5.js:28:130872)
+    at C:\Users\sunka\Down
+loads\ai-interview-app\nod
+e_modules\next\dist\compil
+ed\webpack\bundle5.js:28:1
+31723
+    at symbolIterator (C:\
+Users\sunka\Downloads\ai-i
+nterview-app\node_modules\
+next\dist\compiled\neo-asy
+nc\async.js:1:14444)
+
+Generated code for C:\User
+s\sunka\Downloads\ai-inter
+view-app\node_modules\next
+\dist\build\webpack\loader
+s\css-loader\src\index.js?
+?ruleSet[1].rules[13].oneO
+f[10].use[2]!C:\Users\sunk
+a\Downloads\ai-interview-a
+pp\node_modules\next\dist\
+build\webpack\loaders\post
+css-loader\src\index.js??r
+uleSet[1].rules[13].oneOf[
+10].use[3]!C:\Users\sunka\
+Downloads\ai-interview-app
+\app\globals.css
+
+Import trace for 
+requested module:
+./app/globals.css
+
+
+> Build failed because of 
+webpack errors

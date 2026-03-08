@@ -1,0 +1,766 @@
+You are building a full-stack AI Recruiter Voice Agent web application from scratch. This is a complete SaaS platform that allows recruiters to post jobs, find matching candidates using AI, send interview invitations via email, conduct real-time AI voice interviews, generate structured interview reports, and make hiring decisions — all automated.
+
+Read this entire prompt carefully before writing a single line of code. Follow every section in order.
+
+---
+
+## TECH STACK
+
+- **Framework:** Next.js 15 (App Router, TypeScript)
+- **Styling:** Tailwind CSS v4 + shadcn/ui component library
+- **Authentication:** Custom JWT-based auth (email/password + Google OAuth) — NO Clerk, NO third-party auth providers
+- **Database:** Neon PostgreSQL (serverless)
+- **ORM:** Drizzle ORM
+- **AI LLM:** Google Gemini API (for generating job descriptions, matching candidates, generating interview questions, producing summaries)
+- **Voice Agent:** Murf AI Falcon TTS Streaming API (for conducting real-time AI voice interviews)
+- **Email Service:** Plunk (transactional email for interview invitations)
+- **Deployment:** Vercel
+
+---
+
+## AUTHENTICATION SYSTEM (JWT — Custom, No Third-Party Auth)
+
+Build a complete custom authentication system with the following:
+
+### Database Schema (users table):
+- id (uuid, primary key)
+- email (varchar, unique, not null)
+- password_hash (varchar — bcrypt hashed)
+- full_name (varchar)
+- avatar_url (varchar, nullable)
+- google_id (varchar, nullable — for OAuth)
+- role (enum: 'recruiter' | 'admin', default 'recruiter')
+- created_at, updated_at (timestamps)
+
+### Auth Flow:
+1. **Sign Up:** POST /api/auth/register — accept full_name, email, password → hash password with bcrypt (saltRounds: 12) → save user to DB → generate JWT access token (expires in 7d) + refresh token (expires in 30d) → set both as httpOnly cookies → return user object
+2. **Sign In:** POST /api/auth/login — validate email/password → compare bcrypt hash → generate and set JWT tokens → return user
+3. **Google OAuth:** Implement Google OAuth 2.0 flow — /api/auth/google → redirect to Google → callback at /api/auth/google/callback → create or update user with google_id → issue JWT tokens → redirect to dashboard
+4. **Sign Out:** POST /api/auth/logout → clear httpOnly cookies
+5. **Token Refresh:** POST /api/auth/refresh → validate refresh token → issue new access token
+6. **Auth Middleware:** Create a middleware.ts that protects all /dashboard/* routes. If no valid JWT cookie found, redirect to /sign-in. Attach decoded user to request headers for downstream API routes.
+7. **useAuth hook:** Create a client-side React context + hook that holds current user state, exposes login/logout/register methods, reads session from a GET /api/auth/me endpoint.
+
+### Auth Pages:
+- /sign-in — email/password form + "Continue with Google" button. Redirect to /dashboard on success.
+- /sign-up — full_name, email, password, confirm password. Redirect to /dashboard on success.
+- Both pages should be visually polished with the app branding, matching the overall dark/modern UI theme.
+
+---
+
+## ENVIRONMENT VARIABLES REQUIRED
+
+Create a .env.local.example file listing all required env vars:
+
+DATABASE_URL=
+JWT_SECRET=
+JWT_REFRESH_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
+GEMINI_API_KEY=
+MURF_API_KEY=
+PLUNK_API_KEY=
+NEXT_PUBLIC_APP_URL=
+
+---
+
+## DATABASE SCHEMA (Drizzle ORM + Neon PostgreSQL)
+
+Define all tables in /lib/db/schema.ts:
+
+### users
+- id uuid PK
+- email varchar unique
+- password_hash varchar nullable
+- full_name varchar
+- avatar_url varchar nullable
+- google_id varchar nullable
+- role varchar default 'recruiter'
+- created_at, updated_at timestamps
+
+### jobs
+- id uuid PK
+- recruiter_id uuid FK → users.id
+- title varchar
+- type varchar (full-time/part-time/contract/remote)
+- location varchar
+- salary_min integer nullable
+- salary_max integer nullable
+- description text
+- responsibilities text
+- requirements text
+- status varchar default 'draft' (draft/active/expired)
+- created_at, updated_at timestamps
+
+### candidates
+- id uuid PK
+- recruiter_id uuid FK → users.id (who added them)
+- full_name varchar
+- email varchar
+- phone varchar nullable
+- location varchar nullable
+- current_role varchar nullable
+- years_experience integer nullable
+- skills text[] (array)
+- resume_url varchar nullable
+- resume_text text nullable (extracted from PDF for AI matching)
+- linkedin_url varchar nullable
+- notes text nullable
+- created_at, updated_at timestamps
+
+### job_candidate_matches
+- id uuid PK
+- job_id uuid FK → jobs.id
+- candidate_id uuid FK → candidates.id
+- match_score integer (0–100)
+- match_reason text
+- created_at timestamp
+
+### interview_invites
+- id uuid PK
+- job_id uuid FK → jobs.id
+- candidate_id uuid FK → candidates.id
+- recruiter_id uuid FK → users.id
+- interview_type varchar (screening/technical/hr_final)
+- status varchar default 'pending' (pending/accepted/completed/expired)
+- interview_link varchar unique (auto-generated UUID token)
+- email_sent_at timestamp nullable
+- expires_at timestamp
+- created_at timestamp
+
+### interview_sessions
+- id uuid PK
+- invite_id uuid FK → interview_invites.id
+- candidate_name varchar
+- job_id uuid FK → jobs.id
+- candidate_id uuid FK → candidates.id
+- started_at timestamp
+- completed_at timestamp nullable
+- duration_seconds integer nullable
+- total_questions integer
+- questions_answered integer
+- transcript jsonb (array of {role: 'ai'|'candidate', text: string, timestamp})
+- overall_score integer nullable (0–100)
+- communication_score integer nullable
+- technical_score integer nullable
+- strengths text[]
+- concerns text[]
+- ai_summary text nullable
+- ai_recommendation varchar nullable (strong_yes/yes/maybe/no)
+- key_highlights text[]
+- created_at timestamp
+
+### app_settings
+- id uuid PK
+- recruiter_id uuid FK → users.id unique
+- company_name varchar nullable
+- company_logo_url varchar nullable
+- ai_interviewer_name varchar default 'Alex'
+- ai_voice_id varchar default 'en-US-Neural2-F'
+- interview_tone varchar default 'professional' (professional/friendly/strict)
+- evaluation_strictness varchar default 'balanced'
+- screening_question_count integer default 5
+- technical_question_count integer default 6
+- hr_question_count integer default 4
+- silence_timeout_seconds integer default 3
+- custom_ai_prompt text nullable
+- invite_expiry_days integer default 7
+- reply_to_email varchar nullable
+- custom_email_intro text nullable
+- email_notifications_enabled boolean default true
+- created_at, updated_at timestamps
+
+---
+
+## FOLDER STRUCTURE
+
+/app
+  /(auth)
+    /sign-in/page.tsx
+    /sign-up/page.tsx
+  /(dashboard)
+    /dashboard
+      /layout.tsx  ← sidebar + header layout, protected
+      /page.tsx    ← dashboard home
+      /jobs/page.tsx
+      /candidates/page.tsx
+      /schedules/page.tsx
+      /settings/page.tsx
+  /interview/[token]/page.tsx  ← public, no auth required
+  /page.tsx  ← landing page
+/components
+  /landing/  ← landing page sections
+  /dashboard/  ← sidebar, header, stat cards
+  /jobs/  ← job card, add job modal, matching dialog
+  /candidates/  ← candidate card, add candidate modal/form
+  /schedules/  ← invite list, interview result panel
+  /interview/  ← video call UI, transcription panel, controls
+  /settings/  ← settings tabs and forms
+  /ui/  ← shadcn components
+/lib
+  /db/
+    index.ts  ← drizzle client
+    schema.ts  ← all tables
+  /auth/
+    jwt.ts  ← sign/verify JWT helpers
+    password.ts  ← bcrypt helpers
+    middleware.ts  ← auth middleware helpers
+  /ai/
+    gemini.ts  ← Gemini API calls
+    murf.ts  ← Murf Falcon streaming helpers
+  /email/
+    plunk.ts  ← send email via Plunk
+  /utils.ts
+/middleware.ts  ← Next.js route protection
+
+---
+
+## PAGE 1: LANDING PAGE (/app/page.tsx)
+
+Build a stunning, modern, dark-themed SaaS landing page with these sections:
+
+1. **Navbar** — Logo + app name "HireFlow AI" on left. Nav links: Features, How It Works, Pricing. CTA buttons: "Sign In" → /sign-in, "Get Started Free" → /sign-up. Sticky on scroll.
+
+2. **Hero Section** — Large bold headline: "AI-Powered Recruiting, From Sourcing to Hire." Subheadline about automating the entire hiring pipeline. Two CTA buttons: "Start Hiring Free" (primary) + "Watch Demo" (outline). Animated gradient background. Mock dashboard screenshot/illustration on the right.
+
+3. **Stats Bar** — 4 stats: "10,000+ Interviews Conducted", "95% Recruiter Satisfaction", "130ms Voice Latency", "35+ Languages Supported"
+
+4. **How It Works** — 5 numbered steps with icons:
+   1. Post a Job — AI generates full job description
+   2. Find Matches — AI scans candidates, ranks by fit score
+   3. Send Invites — One-click email invitations
+   4. AI Conducts Interview — Murf Falcon voice agent interviews candidate
+   5. Review & Decide — Structured report sent to recruiter
+
+5. **Features Section** — 6 feature cards with icons:
+   - AI Job Description Generator
+   - Smart Candidate Matching
+   - Real-Time Voice Interviews
+   - Auto Transcription & Scoring
+   - Structured Interview Reports
+   - Email Invite Automation
+
+6. **Testimonials** — 3 fake testimonials with avatar, name, role, company, star rating
+
+7. **Pricing Section** — 3 tiers: Free (0/mo), Pro ($49/mo), Enterprise (Custom). List features per tier. "Get Started" buttons.
+
+8. **Footer** — Logo, tagline, links (Product, Company, Legal), social icons
+
+---
+
+## PAGE 2: AUTHENTICATION PAGES
+
+### /sign-in
+- Centered card on dark gradient background
+- App logo at top
+- "Welcome back" heading
+- Email input + Password input with show/hide toggle
+- "Forgot password?" link
+- "Sign In" submit button (shows loading spinner during API call)
+- Divider "or continue with"
+- "Continue with Google" button (Google icon)
+- Link: "Don't have an account? Sign up"
+- On success: redirect to /dashboard
+- Show inline field-level validation errors
+- Show toast on API error
+
+### /sign-up
+- Same layout
+- Fields: Full Name, Email, Password, Confirm Password
+- Password strength indicator
+- Terms checkbox
+- "Create Account" button
+- Google OAuth option
+- Link: "Already have an account? Sign in"
+
+---
+
+## PAGE 3: DASHBOARD LAYOUT (/app/(dashboard)/dashboard/layout.tsx)
+
+Build a persistent sidebar + top header layout:
+
+### Sidebar:
+- Width: 260px expanded, 64px collapsed
+- Top: App logo + name (hidden when collapsed, only icon shown)
+- Navigation items with icons (lucide-react):
+  - Home (LayoutDashboard icon) → /dashboard
+  - Jobs (Briefcase icon) → /dashboard/jobs
+  - Candidates (Users icon) → /dashboard/candidates
+  - Schedules & Interviews (Calendar icon) → /dashboard/schedules
+  - Settings (Settings icon) → /dashboard/settings
+- Active state: highlighted background
+- Collapse/expand toggle button at bottom of nav
+- Footer: User avatar + name + email (truncated) + logout button. "Upgrade Plan" button (visible in expanded mode).
+
+### Top Header:
+- Left: Page title (dynamic per route)
+- Right: Notification bell icon + User avatar with dropdown (Profile, Settings, Sign Out)
+
+---
+
+## PAGE 4: DASHBOARD HOME (/dashboard/page.tsx)
+
+Fetch real data from DB for logged-in recruiter:
+
+### Stats Row (4 cards):
+1. Active Jobs — count of jobs where status='active' and recruiter_id = current user
+2. Total Candidates — count of all candidates added by recruiter
+3. Interviews Sent — count of interview_invites sent by recruiter
+4. Screening Rate — (completed interviews / total invites) * 100, shown as percentage
+
+### Recent Activity Feed:
+- List last 10 events chronologically:
+  - Interview completed: "[Candidate Name] completed interview for [Job Title]" — X hours ago
+  - Invite sent: "Interview invite sent to [Candidate Name]" — X hours ago
+  - Job created: "New job posted: [Job Title]" — X hours ago
+  - Candidate added: "[Candidate Name] added to candidates" — X hours ago
+- Each activity has an icon, description, and relative timestamp
+
+### Quick Actions:
+- "Post New Job" button → opens add job modal
+- "Add Candidate" button → opens add candidate modal
+- "View Schedules" button → /dashboard/schedules
+
+---
+
+## PAGE 5: JOBS PAGE (/dashboard/jobs/page.tsx)
+
+### Layout:
+- Page header: "Job Postings" title + "Add New Job" button (primary)
+- Summary stats bar: Total Jobs | Active | Draft | Expired (colored badges)
+- Job cards grid (responsive 1-3 columns)
+
+### Job Card:
+Display per job:
+- Job title (bold, large)
+- Type badge (Full-time/Remote/etc) + Location
+- Salary range (if set)
+- Status badge: Draft (gray), Active (green), Expired (red)
+- Posted date
+- Match count (if AI matching run: "X candidates matched")
+- Actions row: "Find Matches" button | Status dropdown (Draft/Active/Expired) | Edit icon | Delete icon
+
+### Add New Job Modal (Dialog):
+- Two modes via tab: "Generate with AI" | "Fill Manually"
+- **AI Mode:** Single input "Job Title" + "Generate" button → calls POST /api/jobs/generate with job title → Gemini generates: title, type, location, salary range, description (500+ words), responsibilities (bullet list), requirements (bullet list) → auto-fills the form below
+- **Manual Mode:** All fields visible immediately
+- Fields: Job Title*, Job Type* (select), Location*, Salary Min, Salary Max, Description (textarea, rich), Responsibilities (textarea), Requirements (textarea), Status (Draft/Active)
+- "Save Job" button → POST /api/jobs → saves to DB → refreshes job list → shows success toast
+
+### Find Matches Dialog:
+- Triggered by "Find Matches" on a job card
+- POST /api/jobs/[id]/match → sends job description + all candidates' resume_text to Gemini → Gemini returns ranked list with match_score (0-100) and match_reason for each candidate → saves to job_candidate_matches table
+- Dialog shows: Loading spinner during matching → then list of matched candidates sorted by score descending
+- Each candidate row: Avatar/initials, Name, Current Role, Skills tags, Match Score (colored: green 80+, yellow 60-79, red <60), Match Reason text, Checkbox to select
+- "Select All" checkbox at top
+- "Re-run Matching" button
+- "Send Invite →" button (enabled when ≥1 candidate selected) → advances to invite step in same dialog
+
+### Send Invite Step (same dialog, step 2):
+- Shows: "Sending to X candidates"
+- Interview Type selector: Screening Round | Technical Round | HR Final Round (radio cards with icons)
+- Email Preview section: Shows the invite email that will be sent. Recruiter can edit the email body. Auto-populated with: candidate name, job title, company name, interview link, expiry date.
+- "Send Invites" button → POST /api/invites/send → for each candidate: generate unique interview_link token → save invite to DB → send email via Plunk → update status
+- Success: shows "Invites sent to X candidates" with confetti or success animation
+
+---
+
+## PAGE 6: CANDIDATES PAGE (/dashboard/candidates/page.tsx)
+
+### Layout:
+- Header: "Candidates" title + "Add Candidate" button
+- Search bar (searches name, email, skills, current_role)
+- View toggle: Grid / List
+- Pagination (10 per page)
+
+### Candidate Card (Grid):
+- Avatar (initials circle with color)
+- Full Name + Current Role
+- Skills tags (max 4 shown, "+N more" badge)
+- Years experience badge
+- Location
+- Actions: "View Details" icon, "Delete" icon
+
+### Candidate Card (List):
+- Table row: Avatar+Name | Email | Current Role | Skills (tags) | Experience | Actions
+
+### Candidate Detail Modal/Page:
+- Full profile view: all fields
+- List of interviews given (linked to interview_sessions)
+- Resume download link if available
+
+### Add Candidate Modal:
+Two tabs: "Upload Resume" | "Fill Manually"
+
+**Upload Resume Tab:**
+- Drag & drop / file picker for PDF
+- On upload: POST /api/candidates/parse-resume → send PDF text to Gemini → Gemini extracts: full_name, email, phone, location, current_role, years_experience, skills[], linkedin_url → auto-fills the form below
+- Form shows pre-filled, recruiter can edit before saving
+
+**Manual Tab:**
+- Full Name*, Email*, Phone, Location, Current Role, Years Experience (number), Skills (tag input — type and press Enter), LinkedIn URL, Notes (textarea), Resume URL
+
+- "Save Candidate" → POST /api/candidates → saves to DB → shows success toast → adds to list
+
+---
+
+## PAGE 7: SCHEDULES & INTERVIEWS PAGE (/dashboard/schedules/page.tsx)
+
+### Layout:
+Two-column layout (60/40 split):
+
+**Left Column — Invited Candidates:**
+- Job selector dropdown at top (lists all jobs with sent invites)
+- Search bar
+- Filter tabs: All | Screening | Technical | HR Final
+- Status filter: All | Pending | Completed | Expired
+- List of invited candidates:
+  - Avatar + Name
+  - Interview type badge
+  - Status badge (Pending=yellow, Completed=green, Expired=gray)
+  - Invited date
+  - "View Result" button (if completed)
+
+**Right Column — Interview Results Panel:**
+- Shows when a completed interview is selected from left
+- Candidate name + job title header
+- Score cards row: Overall Score (big circle gauge), Communication Score, Technical Score
+- AI Recommendation badge (Strong Yes / Yes / Maybe / No — color coded)
+- Key Highlights (bullet list)
+- Strengths section (green tags)
+- Concerns section (red tags)
+- AI Summary paragraph
+- Full Transcript accordion: each exchange labeled "AI Interviewer" or "Candidate", timestamp, text
+
+### Stats bar at top:
+- Total Invites Sent | Completed | Pending | Average Score
+
+---
+
+## PAGE 8: SETTINGS PAGE (/dashboard/settings/page.tsx)
+
+Tabbed settings page with 5 tabs:
+
+### Tab 1: Company Profile
+- Company Name
+- Company Logo (upload)
+- Reply-to Email
+- Save button → PATCH /api/settings
+
+### Tab 2: AI Interview
+- AI Interviewer Name (text input, e.g. "Alex")
+- AI Voice ID (text input — paste Murf voice ID, e.g. "en-US-Neural2-F")
+- AI Voice Type selector: radio cards — "Murf Falcon (Recommended)" | "Murf Standard"
+- Interview Tone: Professional | Friendly | Strict (radio cards)
+- Evaluation Strictness: Lenient | Balanced | Strict (radio cards)
+- Question Counts:
+  - Screening Questions: number input (1-10, default 5)
+  - Technical Questions: number input (1-10, default 6)
+  - HR Questions: number input (1-10, default 4)
+- Timing Behavior: "AI responds after X seconds of silence" (slider 1-8s)
+- Custom AI Prompt textarea (optional system prompt appended to Gemini)
+- Save button
+
+### Tab 3: Email Invites
+- Reply-to Email
+- Invite Expiry (days): number input
+- Custom Email Intro: textarea (prepended to invite email body)
+- Preview of email template (live preview updates as you type)
+- Save button
+
+### Tab 4: Notifications
+- Toggle: Email me when candidate completes interview
+- Toggle: Email me when invite expires without response
+- Toggle: Daily summary report
+- Save button
+
+### Tab 5: Account
+- Update Full Name
+- Update Email
+- Change Password (current password, new password, confirm)
+- Danger Zone: "Delete Account" (confirmation dialog)
+
+All settings persist to app_settings table. On page load, fetch current settings for recruiter. On save, PATCH /api/settings.
+
+---
+
+## PAGE 9: INTERVIEW PORTAL (/interview/[token]/page.tsx)
+
+This page is PUBLIC (no auth required). Accessed via the unique interview link emailed to candidate.
+
+### Step 1: Waiting Room
+On load, fetch invite details by token:
+- GET /api/interview/[token] → returns: job title, company name, interview type, candidate email, recruiter company, estimated duration, question count (from settings)
+- If token invalid/expired → show "This interview link is invalid or has expired" page
+
+Display:
+- App header (logo + app name only)
+- Left column cards (2 cards):
+  1. "Interview Details" card: Job Title, Company, Interview Type, Estimated Duration, Number of Questions
+  2. "What to Expect" card: bullet list of tips (have good lighting, quiet room, etc.)
+- Right column cards (2 cards):
+  1. "Your Information" card: Pre-filled email (from invite), Full Name input (required), brief instruction text
+  2. "Ready to Begin?" card: checklist (microphone ✓, camera ✓, quiet environment ✓) + "Start Interview" button (primary, large)
+- Everything fits on screen without scrolling
+
+### Step 2: Interview Room
+On "Start Interview":
+- Request microphone + camera permissions
+- If denied: show error "Microphone access is required"
+
+**Layout:**
+Left side (60%):
+- Webcam feed (candidate's camera, mirrored)
+- AI Interviewer avatar/animation (pulsing circle that animates when AI is speaking)
+- Current question text displayed below avatar
+- Timer showing interview duration
+- Controls bar at bottom: Mute mic toggle | Disable camera toggle | End Interview button (red)
+
+Right side (40%):
+- "Live Transcript" header
+- Scrollable chat-style transcript:
+  - AI messages: left-aligned, gray bubble, "AI Interviewer" label
+  - Candidate messages: right-aligned, blue bubble, "You" label
+  - Timestamps per message
+- Auto-scrolls to latest message
+
+**Interview Flow Logic:**
+1. On start: POST /api/interview/[token]/start → creates interview_session record → returns session_id + first question from Gemini
+2. AI speaks first question via Murf Falcon TTS streaming:
+   - POST to Murf API: https://api.murf.ai/v1/speech/stream with model: "GEN2", voiceId from settings, text: question
+   - Stream audio back, play via Web Audio API
+   - Show speaking animation on AI avatar while audio plays
+3. After AI finishes speaking → activate Speech Recognition (Web Speech API / SpeechRecognition):
+   - Show "Listening..." indicator
+   - Real-time interim results shown in transcript
+   - After silence_timeout_seconds of silence → finalize answer
+4. POST /api/interview/[token]/answer → send {question, answer, session_id} → Gemini decides next question or ends interview → returns {next_question or null, is_complete}
+5. Repeat until is_complete=true or 6-8 questions answered
+6. On completion → auto-end interview
+
+**Gemini Question Generation Logic (server-side):**
+- System prompt: "You are an AI interviewer conducting a [interview_type] interview for [job_title]. Company: [company_name]. Job Description: [description]. [custom_ai_prompt if set]. Ask exactly [question_count] questions, one at a time. Start with an introduction. Based on candidate's previous answers, ask contextually relevant follow-up questions. Cover: technical skills, experience, problem-solving, culture fit."
+- Send full conversation history each call
+- Return: next question text OR signal to end
+
+**On Interview Complete:**
+- POST /api/interview/[token]/complete → send full transcript → Gemini generates:
+  - overall_score (0-100)
+  - communication_score (0-100)
+  - technical_score (0-100)
+  - strengths[] (3-5 items)
+  - concerns[] (2-4 items)
+  - ai_summary (2-3 paragraphs)
+  - ai_recommendation (strong_yes/yes/maybe/no)
+  - key_highlights[] (3-5 items)
+- Save all to interview_sessions table
+- Update interview_invites status to 'completed'
+- Show completion screen to candidate
+
+### Step 3: Interview Complete Screen
+- Thank you message: "Interview Complete! Thank you [name]."
+- Summary stats: Questions Answered (X/Y), Duration (X minutes)
+- "Your responses have been submitted. The recruiter will review and be in touch." message
+- No scores shown to candidate
+
+---
+
+## API ROUTES
+
+Build all API routes under /app/api/:
+
+### Auth:
+- POST /api/auth/register
+- POST /api/auth/login
+- POST /api/auth/logout
+- GET /api/auth/me
+- POST /api/auth/refresh
+- GET /api/auth/google
+- GET /api/auth/google/callback
+
+### Jobs:
+- GET /api/jobs (list for recruiter)
+- POST /api/jobs (create)
+- PATCH /api/jobs/[id] (update)
+- DELETE /api/jobs/[id] (delete)
+- POST /api/jobs/generate (AI-generate job description via Gemini)
+- POST /api/jobs/[id]/match (AI match candidates to job)
+
+### Candidates:
+- GET /api/candidates
+- POST /api/candidates
+- GET /api/candidates/[id]
+- PATCH /api/candidates/[id]
+- DELETE /api/candidates/[id]
+- POST /api/candidates/parse-resume (PDF → Gemini → structured data)
+
+### Invites:
+- POST /api/invites/send (send invite emails via Plunk)
+- GET /api/invites (list for recruiter, filterable by job_id)
+
+### Interview (public):
+- GET /api/interview/[token] (get invite details by token)
+- POST /api/interview/[token]/start (create session, get first question)
+- POST /api/interview/[token]/answer (submit answer, get next question)
+- POST /api/interview/[token]/complete (finalize, generate report)
+
+### Settings:
+- GET /api/settings
+- PATCH /api/settings
+
+### Dashboard:
+- GET /api/dashboard/stats (aggregated stats for home)
+- GET /api/dashboard/activity (recent activity feed)
+
+---
+
+## EMAIL INVITE TEMPLATE (Plunk)
+
+Send via Plunk API (POST https://api.useplunk.com/v1/send):
+
+**Subject:** "Interview Invitation: [Job Title] at [Company Name]"
+
+**Body (HTML):**
+- Company logo (if set)
+- "Hi [Candidate Name],"
+- Custom intro (from settings, if set)
+- "You have been invited to complete an AI-powered interview for the [Job Title] position at [Company Name]."
+- Interview details: Type, Estimated Duration
+- Large CTA button: "Start Your Interview" → links to NEXT_PUBLIC_APP_URL/interview/[token]
+- "This link expires on [expiry_date]."
+- Footer: "This interview is powered by HireFlow AI."
+
+---
+
+## MURF FALCON TTS INTEGRATION
+
+Murf API endpoint: POST https://api.murf.ai/v1/speech/stream
+
+Request body:
+```json
+{
+  "text": "question text here",
+  "voiceId": "en-US-Neural2-F",
+  "model": "GEN2",
+  "format": "MP3",
+  "sampleRate": 24000
+}
+```
+
+Headers: `api-key: MURF_API_KEY`
+
+Handle streaming audio response:
+- Use fetch with ReadableStream
+- Pipe chunks to Web Audio API AudioContext
+- Show speaking animation (pulsing glow on AI avatar) while streaming
+- On stream end → stop animation → activate Speech Recognition
+
+Create a server-side API route /api/murf/speak that proxies the Murf request (to keep API key server-side). Accept {text, voiceId} and stream the audio response back to client.
+
+---
+
+## GEMINI AI INTEGRATION
+
+Use Google Generative AI SDK (@google/generative-ai):
+
+**Functions to implement in /lib/ai/gemini.ts:**
+
+1. `generateJobDescription(title: string): Promise<JobDescription>` — generate full job posting JSON
+2. `matchCandidatesToJob(job: Job, candidates: Candidate[]): Promise<MatchResult[]>` — returns array of {candidate_id, match_score, match_reason} sorted by score
+3. `parseResume(resumeText: string): Promise<CandidateProfile>` — extract structured data from resume text
+4. `generateNextQuestion(context: InterviewContext): Promise<string | null>` — returns next question or null if done
+5. `generateInterviewReport(transcript: TranscriptItem[], jobTitle: string, interviewType: string): Promise<InterviewReport>` — full scoring and analysis
+
+All calls use model: "gemini-1.5-flash" for speed/cost efficiency.
+
+---
+
+## UI/UX REQUIREMENTS
+
+- **Theme:** Dark mode first. Background: #0a0a0f. Card backgrounds: #111118. Border: #1e1e2e. Primary accent: #6c47ff (purple). Success: #22c55e. Warning: #eab308. Error: #ef4444.
+- **Typography:** Use Inter font (next/font/google)
+- **Animations:** Framer Motion for page transitions, modal opens, loading states
+- **Loading States:** Every async action must show a loading spinner/skeleton
+- **Error Handling:** Toast notifications (shadcn Sonner) for all success/error states
+- **Responsive:** Mobile-friendly (hamburger menu on mobile for sidebar)
+- **Empty States:** Every list page needs a beautiful empty state illustration + CTA when no data
+- **Confirmation Dialogs:** All destructive actions (delete job, delete candidate, end interview early) require confirmation
+
+---
+
+## ADDITIONAL REQUIREMENTS
+
+1. **PDF Resume Parsing:** When user uploads PDF, use pdf-parse npm package server-side to extract text, then send to Gemini.
+
+2. **Interview Link Generation:** Use crypto.randomUUID() to generate unique tokens. Store in interview_invites.interview_link.
+
+3. **Real-time Transcript:** Use React state to build transcript array. Each AI/candidate turn appended immediately.
+
+4. **Speech Recognition:** Use browser's built-in Web Speech API (window.SpeechRecognition). Show interim results in gray, final results in white.
+
+5. **Auto-advance Questions:** After silence_timeout_seconds (from settings) of no speech detected → automatically submit whatever was transcribed.
+
+6. **Score Visualization:** Use recharts RadialBarChart for score circles on interview results page.
+
+7. **Drizzle Migrations:** Include package.json scripts: `"db:generate": "drizzle-kit generate"`, `"db:migrate": "drizzle-kit migrate"`, `"db:push": "drizzle-kit push"`, `"db:studio": "drizzle-kit studio"`
+
+8. **Security:** 
+   - All dashboard API routes validate JWT from cookie
+   - All data queries filter by recruiter_id = authenticated user's id (no cross-user data leakage)
+   - Interview portal routes only need valid token, no auth
+   - Rate limit auth endpoints (5 attempts per minute per IP)
+
+9. **Package.json Scripts:**
+```json
+{
+  "dev": "next dev",
+  "build": "next build",
+  "start": "next start",
+  "lint": "next lint",
+  "db:generate": "drizzle-kit generate",
+  "db:migrate": "drizzle-kit migrate",
+  "db:push": "drizzle-kit push",
+  "db:studio": "drizzle-kit studio"
+}
+```
+
+10. **Required npm packages to install:**
+- @google/generative-ai
+- drizzle-orm @neondatabase/serverless
+- drizzle-kit
+- bcryptjs @types/bcryptjs
+- jsonwebtoken @types/jsonwebtoken
+- pdf-parse @types/pdf-parse
+- framer-motion
+- sonner
+- recharts
+- lucide-react
+- @radix-ui/* (via shadcn)
+- uuid @types/uuid
+
+---
+
+## BUILD ORDER (follow this sequence)
+
+1. Initialize Next.js project + install all packages + setup shadcn/ui
+2. Setup Drizzle + Neon DB connection + create all schemas + run migration
+3. Build auth system: JWT helpers, bcrypt helpers, API routes (register/login/logout/me/google), middleware
+4. Build sign-in and sign-up pages with Google OAuth
+5. Build landing page (all sections)
+6. Build dashboard layout (sidebar + header)
+7. Build dashboard home (with real data)
+8. Build jobs page (full CRUD + AI generation + matching + invite flow)
+9. Build candidates page (full CRUD + resume upload + AI parsing)
+10. Build interview portal (waiting room + live interview + completion)
+11. Build schedules page (invite list + results panel)
+12. Build settings page (all 5 tabs, fully wired)
+13. Connect all Gemini AI functions
+14. Connect Murf Falcon TTS in interview portal
+15. Connect Plunk email sending
+16. Wire up dashboard stats and activity feed with real data
+17. Final polish: empty states, loading skeletons, error boundaries, responsive fixes
+
+---
+
+Begin building now. Do not skip any section. Every feature described must be fully implemented and functional — not mocked or placeholdered. Ask for clarification only if a requirement is genuinely ambiguous.
