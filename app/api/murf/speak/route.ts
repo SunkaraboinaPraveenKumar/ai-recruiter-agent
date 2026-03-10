@@ -3,12 +3,14 @@ import { streamMurfAudio } from "@/lib/ai/murf";
 
 export async function POST(req: NextRequest) {
     try {
-        const { text, voiceId } = await req.json();
+        const { text, voiceId, locale } = await req.json();
         if (!text?.trim()) return NextResponse.json({ error: "Text is required" }, { status: 400 });
 
         const stream = await streamMurfAudio({
             text,
-            voiceId: voiceId || "en-US-Neural2-F",
+            voiceId: voiceId || "natalie",
+            locale: locale || "en-US",
+            model: "FALCON",
         });
 
         return new NextResponse(stream, {

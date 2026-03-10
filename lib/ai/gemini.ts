@@ -1,7 +1,33 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // Upgraded to newer stable model per request
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+// Retry helper: tries Gemini first, falls back to Groq llama on 503 (overload) or 429 (quota exceeded)
+async function generateWithRetry(prompt: string): Promise<string> {
+    try {
+        const result = await model.generateContent(prompt);
+        return result.response.text().trim();
+    } catch (err: unknown) {
+        const errObj = err as any;
+        const status = errObj?.status;
+        const message = errObj?.message || "";
+
+        // Catch BOTH 503 High Demand and 429 Quota Exceeded errors
+        if (status === 503 || status === 429 || message.includes("503") || message.includes("429") || message.includes("Quota")) {
+            console.warn(`Gemini API failed with ${status || 'rate limit/quota'}. Falling back to Groq llama-3.3-70b...`);
+            const completion = await groq.chat.completions.create({
+                model: "llama-3.3-70b-versatile",
+                messages: [{ role: "user", content: prompt }],
+                temperature: 0.7,
+            });
+            return completion.choices[0]?.message?.content?.trim() ?? "";
+        }
+        throw err;
+    }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface JobDescription {
@@ -77,8 +103,7 @@ Return ONLY a JSON object with exactly these fields:
 }
 Make it realistic, detailed and appealing to top candidates.`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const text = await generateWithRetry(prompt);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("Failed to parse job description from AI");
     return JSON.parse(jsonMatch[0]);
@@ -113,8 +138,7 @@ Return ONLY a JSON array with match results for each candidate:
 [{ "candidate_id": "uuid", "match_score": 0-100, "match_reason": "2-3 sentence explanation" }]
 Sort by match_score descending. Be realistic and strict.`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const text = await generateWithRetry(prompt);
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) throw new Error("Failed to parse match results from AI");
     return JSON.parse(jsonMatch[0]);
@@ -138,8 +162,7 @@ Return ONLY a JSON object:
 RESUME TEXT:
 ${resumeText.slice(0, 3000)}`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const text = await generateWithRetry(prompt);
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error("Failed to parse resume from AI");
     return JSON.parse(jsonMatch[0]);
@@ -173,8 +196,7 @@ ${isFirst
 
 Respond with ONLY the question/statement text. No labels, no explanations. Keep it concise (2-4 sentences max).`;
 
-    const result = await model.generateContent(prompt);
-    return result.response.text().trim();
+    return generateWithRetry(prompt);
 }
 
 // ─── 5. Generate Interview Report ─────────────────────────────────────────────

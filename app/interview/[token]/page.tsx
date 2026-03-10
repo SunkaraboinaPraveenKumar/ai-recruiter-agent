@@ -44,7 +44,7 @@ export default function InterviewPage() {
     const [elapsed, setElapsed] = useState(0);
     const [questionsAnswered, setQuestionsAnswered] = useState(0);
     const [totalQuestions, setTotalQuestions] = useState(5);
-    const [voiceId, setVoiceId] = useState("en-US-Neural2-F");
+    const [voiceId, setVoiceId] = useState("natalie"); // Murf short voice name
     const [completing, setCompleting] = useState(false);
     const [showEndDialog, setShowEndDialog] = useState(false);
     const [starting, setStarting] = useState(false);
@@ -118,10 +118,17 @@ export default function InterviewPage() {
                 source.onended = () => { setAiSpeaking(false); resolve(); };
                 source.start();
             } catch {
-                // Fallback
+                // Fallback to browser TTS with best available English voice
                 const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = "en-US";
+                utterance.rate = 0.95;
+                // Try to find a natural-sounding English voice
+                const voices = speechSynthesis.getVoices();
+                const englishVoice = voices.find(v => v.lang.startsWith("en") && !v.name.toLowerCase().includes("zira"))
+                    || voices.find(v => v.lang.startsWith("en"));
+                if (englishVoice) utterance.voice = englishVoice;
                 utterance.onend = () => { setAiSpeaking(false); resolve(); };
-                utterance.onerror = () => { setAiSpeaking(false); resolve(); }; // Prevent hanging if TTS fails
+                utterance.onerror = () => { setAiSpeaking(false); resolve(); };
                 speechSynthesis.speak(utterance);
             }
         });
@@ -212,6 +219,12 @@ export default function InterviewPage() {
 
         recognition.onend = () => {
             setListening(false);
+            // If the recognition engine stops (e.g., due to a pause or noise), and we have a final answer,
+            // submit it instead of leaving the user hanging forever.
+            if (finalAnswerRef.current.trim() && !completing && !showEndDialog) {
+                if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+                submitAnswerRef.current?.(finalAnswerRef.current.trim());
+            }
         };
 
         recognition.start();
