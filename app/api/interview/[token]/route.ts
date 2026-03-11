@@ -42,9 +42,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
 
     return NextResponse.json({
         jobTitle: invite.job.title,
-        companyName: settings?.company_name || "The Company",
+        companyName: settings?.company_name || "Hire Flow",
         interviewType,
         candidateEmail: invite.candidate.email,
+        candidateFullName: invite.candidate.full_name,
         estimatedDuration: `${questionCount * 3}–${questionCount * 5} minutes`,
         questionCount,
         silenceTimeout: settings?.silence_timeout_seconds ?? 3,

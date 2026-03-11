@@ -434,8 +434,15 @@ function MatchDialog({ job, onClose, recruiterId }: { job: Job; onClose: () => v
                                                 className={`p-3 rounded-xl border transition-colors cursor-pointer ${selected.includes(m.candidate_id) ? "border-[#6c47ff]/40 bg-[#6c47ff]/5" : "border-[#1e1e2e] hover:border-[#6c47ff]/20"}`}
                                                 onClick={() => setSelected(p => p.includes(m.candidate_id) ? p.filter(x => x !== m.candidate_id) : [...p, m.candidate_id])}>
                                                 <div className="flex items-center gap-3">
-                                                    <input type="checkbox" checked={selected.includes(m.candidate_id)} onChange={() => { }}
-                                                        className="accent-[#6c47ff]" onClick={e => e.stopPropagation()} />
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selected.includes(m.candidate_id)} 
+                                                        onChange={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelected(p => p.includes(m.candidate_id) ? p.filter(x => x !== m.candidate_id) : [...p, m.candidate_id]);
+                                                        }}
+                                                        className="accent-[#6c47ff] cursor-pointer" 
+                                                    />
                                                     <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#6c47ff] to-purple-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
                                                         {m.candidate?.full_name?.slice(0, 2).toUpperCase()}
                                                     </div>
